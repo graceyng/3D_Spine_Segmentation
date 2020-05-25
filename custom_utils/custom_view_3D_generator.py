@@ -13,10 +13,10 @@ matplotlib.use("Qt5Agg")
 
 import matplotlib.pyplot as plt
 import json
-import custom_utils.GN_custom_generators as gen
+import custom_utils.custom_generators as gen
 
 #Parameters to select
-metadataFile = outputFile = '/Users/graceng/Documents/Med_School/Research/Radiology/043020_Metadata.json'
+metadataFile = '/Users/graceng/Documents/Med_School/Research/Radiology/043020_Metadata.json'
 maskDir = 'collateVertMasks'
 nChannels = 1
 scanList_type = 'scanList_train' #'scanList_valid'

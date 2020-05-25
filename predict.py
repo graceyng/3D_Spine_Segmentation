@@ -10,7 +10,7 @@ from tensorflow.keras.optimizers import SGD, RMSprop, Adam
 from tensorflow.keras.preprocessing import image
 from tensorflow.keras.callbacks import LearningRateScheduler, ModelCheckpoint
 import csv
-import custom_models
+from custom_utils import custom_models
 import time
 from tensorflow.python.keras.utils.data_utils import Sequence
 from tensorflow.keras import backend as K

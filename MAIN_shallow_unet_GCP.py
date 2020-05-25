@@ -1,7 +1,6 @@
 # 3D Automated segmentation for SPGR proximal femur images
 
 import tensorflow
-from custom_utils import csv_utils, old_custom_generators
 from custom_utils import custom_models
 from custom_utils.old_custom_generators import getFolderNamesFromDir, getFileNamesFromDir, getFileFrameNumber, getFileMappingForDir
 from custom_utils.old_custom_generators import Generator_3D

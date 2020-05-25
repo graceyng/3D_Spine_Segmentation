@@ -1,5 +1,7 @@
-
-from keras.utils import Sequence
+#TODO: check if keras version matters
+import tensorflow as tf
+keras = tf.compat.v1.keras
+Sequence = keras.utils.Sequence
 import numpy as np 
 import glob
 import os
@@ -63,7 +65,7 @@ class Generator_3D(Sequence):
 	def __init__(self, scanList, dirPath, maskDir, numFramesPerStack, batchSize=32, dim=(224,224),
 				 nChannels=1, seed=1, shuffle=False, sliceFileExt=".dcm", fitImgMethod="pad",
 				 zoomRange=(1,1), rotationRange=0, widthShiftRange=0, heightShiftRange=0,
-				 flipLR=False, flipUD=False):
+				 flipLR=False, flipUD=False, channel_order='first'):
 
 		'Initialization'
 		self.scanList = scanList
@@ -84,6 +86,7 @@ class Generator_3D(Sequence):
 		self.heightShiftRange = -heightShiftRange
 		self.flipLR = flipLR
 		self.flipUD = flipUD
+		self.channel_order = channel_order
 
 
 	def __len__(self):
@@ -114,22 +117,24 @@ class Generator_3D(Sequence):
 		# print('Calling data generation . . .')
 		# print()
 
-		while True:
+		#while True:
 		#TODO: check that the while true is necessary
 		# THIS WHILE TRUE IS CRUCIAL FOR THE KERAS TO RUN THE GENERATOR PROPERLY (?)
 
-			'Generates data containing batchSize samples' # X : (n_samples, *dim, nChannels)
-			# Initialization
-			Img = np.empty((self.batchSize, self.nChannels, *self.dim, self.numFramesPerStack), dtype=np.float64)
-			Mask = np.empty((self.batchSize, self.nChannels, *self.dim, self.numFramesPerStack), dtype=np.float64)
-				
-			# Generate data
-			for counter in range(self.batchSize):
-				scanName = batchScanList[counter]
-				Img[counter,:,:,:,:] , Mask[counter,:,:,:,:] = self.getVolumeForFileID(scanName)
-				#Note: this repeats the same volume across all of the channels
+		'Generates data containing batchSize samples' # X : (n_samples, *dim, nChannels)
+		# Initialization
+		Img = np.empty((self.batchSize, self.nChannels, *self.dim, self.numFramesPerStack), dtype=np.float64)
+		Mask = np.empty((self.batchSize, self.nChannels, *self.dim, self.numFramesPerStack), dtype=np.float64)
 
-			return Img , Mask
+		# Generate data
+		for counter in range(self.batchSize):
+			scanName = batchScanList[counter]
+			Img[counter,:,:,:,:] , Mask[counter,:,:,:,:] = self.getVolumeForFileID(scanName)
+			#Note: this repeats the same volume across all of the channels
+		if self.channel_order == "last":
+			Img = np.moveaxis(Img, 1, -1)
+			Mask = np.moveaxis(Mask, 1, -1)
+		return Img , Mask
 
 
 
@@ -144,7 +149,6 @@ class Generator_3D(Sequence):
 		zf = self.getRandomZoomConfig(self.zoomRange)
 		theta = self.getRandomRotation(self.rotationRange)
 		tx, ty = self.getRandomShift(*self.dim, self.widthShiftRange, self.heightShiftRange)
-
 		if self.flipLR:
 			flipStackLR = self.getRandomFlipFlag()
 		else:
@@ -157,6 +161,7 @@ class Generator_3D(Sequence):
 		# Get each slice and apply augmentation
 		sliceNames = getFileNamesFromDir(self.dirPath+scanName, fileExt=self.sliceFileExt)
 		maskNames = getFileNamesFromDir(self.dirPath+scanName+'/'+self.maskDir)
+
 		sliceStartIdx, sliceEndIdx = 0, self.numFramesPerStack-1
 		if len(sliceNames) < self.numFramesPerStack:
 			#Pad with empty slices to reach numFramesPerStack
@@ -237,12 +242,18 @@ class Generator_3D(Sequence):
 				Img_slice = np.zeros(self.dim)
 				Mask_slice = np.zeros(self.dim)
 
+			#Make sure that the mask array has values of either 0 or 1
+			Mask_slice = Mask_slice.astype(np.float64)
+			Mask_slice[Mask_slice < 0.5 ] = 0.
+			Mask_slice[Mask_slice >= 0.5] = 1.
+
 			Img_stack[ : , : , counter ] = Img_slice
 			Mask_stack[ : , : , counter ] = Mask_slice
 
 		# Normalization
 		# TODO: consider different methods for MR normalization
 		Img_slice = Img_slice.astype(np.float64)
+
 		if Img_slice.min() < 0.:
 			Img_slice += abs(Img_slice.min())
 		else:
@@ -338,20 +349,9 @@ class Generator_3D(Sequence):
 			img_out = scipy.ndimage.rotate( img , theta , reshape=False , order=3 , 
 				mode='constant' , cval=0 )
 
-			img_out [ img_out < 0.5 ] = 0.
-			img_out [ img_out >= 0.5] = 1.
-			img_out = img_out.astype(np.float64)
-
-
 		else:
 			img_out = scipy.ndimage.rotate( img , theta , reshape=False , 
 				order=3 , mode='constant' , cval=0 )
-			#TODO: decide if this rescaling is necessary
-			"""
-			img_out [ img_out < 0. ] = 0.
-			img_out [ img_out > 255.] = 255.
-			img_out = img_out.astype(np.float64)
-			"""
 
 		return img_out
 
