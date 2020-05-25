@@ -3,7 +3,7 @@
 
 import tensorflow
 from custom_utils import custom_models
-from custom_utils.custom_generators import getFileNamesFromDir, Generator_3D
+from custom_utils.custom_generators import Generator_3D
 # import nibabel as nib
 import string
 import os
@@ -31,8 +31,6 @@ import time
 my_devices = tensorflow.config.experimental.list_physical_devices(device_type='CPU')
 tensorflow.config.experimental.set_visible_devices(devices= my_devices, device_type='CPU')
 
-# NAME = 'FIRST_TENSORBOARD_ATTEMPT-{}'.format( int( time.time() ) )
-
 study_name = '3D_MRI_Spine_Segmentation'
 
 #Parameters to select
@@ -54,14 +52,9 @@ for metadataVar in metadataVars:
         raise Exception('{} not in metadata file.'.format(metadataVar))
 dim = tuple(metadata['dim'])
 
-total_train_images = len(metadata['scanList_train'])
+#TODO: switch back to full size
+total_train_images = 10 #len(metadata['scanList_train'])
 total_valid_images = len(metadata['scanList_valid'])
-
-
-# validation_steps = math.ceil( 28 / batch_size ) # 122 3D validation images  #  math.ceil((1023+987+541)/batch_size) # 250 # number of valid images/batch_size, round up
-# steps_per_epoch = math.ceil( 67 / batch_size ) # 365 3D training images # math.ceil((2755+3424+1949)/batch_size) # 1000 # number of train imges/batch_size, round up
-# 122 and 365 are total images.
-# So we have 67 train images, and 28 valid images
 
 #Channels_first
 #input_shape = (nChannels, dim[0], dim[1], metadata['numFramesPerStack'])
@@ -77,25 +70,13 @@ input_shape = (dim[0], dim[1], metadata['numFramesPerStack'], nChannels)
 #           HOWEVER, THE NUM_FRAMES_PER_STACK MUST NOT BE CHANGED
 
 
-
-
-
-
-
 ###############################################################################
 ###############################################################################
 ###############            TRAIN IMAGES    ####################################
 ###############################################################################
 ###############################################################################
-
-
-
-# Is mask is prob a boolean
-# Changes interpolation, ONLY NEAREST NEIGHBOR INTERP FOR MASKS
-#           Sets interpolation order to 0
-#           also rounds values, if above 127 it becomes 255, if less it becomes 0
-# Also changes the SliceImg to SliceImg / 255
-train_generator = Generator_3D(metadata['scanList_train'], metadata['dirPath'], maskDir,
+#TODO: only using first 10 scans
+train_generator = Generator_3D(metadata['scanList_train'][:10], metadata['dirPath'], maskDir,
                                numFramesPerStack=metadata['numFramesPerStack'], batchSize=metadata['batch_size'],
                                dim=dim, nChannels=nChannels, seed=metadata['seed'], shuffle=True,
                                sliceFileExt=metadata['sliceFileExt'], fitImgMethod="pad", zoomRange=(1,1),
@@ -120,36 +101,13 @@ valid_generator = Generator_3D(metadata['scanList_valid'], metadata['dirPath'], 
 
 validation_steps = valid_generator.__len__()
 
-###   BATCH_SIZE , NUM_CHANNELS, IMG_HEIGHT, IMG_WIDTH , NUM_FRAMES_PER_STACK
-
-
-# train_generator = zip(train_image_generator,train_mask_generator)
-
-# valid_generator = zip(valid_image_generator,valid_mask_generator)
-
-# def combine_generator( gen1 , gen2, total_num_images, batch_size ):
-#     # Attempting to combine the generators instead of zipping them
-    
-#     index=random.randint(0,total_num_images-batch_size)
-#     # index = 0
-#     print('COMB GEN CALLED')
-#     print('COMB GEN CALLED')
-#     print(index)
-#     print(index)
-
-#     # index=0
-#     print(np.shape(gen1.__getitem__(index)_))
-#     print(np.shape( ( gen1.__getitem__(index) , gen2.__getitem__(index)  ) ))
-#     while True:
-#         yield ( gen1.__getitem__(index) , gen2.__getitem__(index)  )
-
 #TODO: see if this combine_generator function is necessary
-"""
+
 def combine_generator( gen, total_num_images, batch_size ):
 
     counter = 0
 
-    num_iterations = np.ceil( total_num_images / batch_size ).astype( int )
+    num_iterations = np.floor( total_num_images / batch_size ).astype( int )
 
     while True:
         for counter in range( num_iterations ):
@@ -170,7 +128,7 @@ def combine_generator( gen, total_num_images, batch_size ):
 train_generator = combine_generator( train_generator, total_train_images, metadata['batch_size'] )
 
 valid_generator = combine_generator( valid_generator ,total_valid_images, metadata['batch_size'] )
-"""
+
 
 
 
@@ -201,10 +159,6 @@ def dice_coef_loss(y_true, y_pred):
 ###############     Model Section ######################################
 ###############################################################################
 ###############################################################################
-
-
-
-
 
 
 # class WeightsRecorder(tensorflow.keras.callbacks.Callback):
@@ -254,15 +208,8 @@ tensorflow.compat.v1.keras.backend.set_session(tensorflow.compat.v1.Session(conf
 
 # File name must include batches, epochs, valid steps
 
-# This section simply creates the output folder where the csv writer will save model info at
-# Define folder name with model parameters
-# will have type /3D_SPGR_Segmentation/out_b30_e300_se60_vs_100
+# This section simply creates the output folder where the csv writer will save model info
 
-#TODO: add this functionality back
-"""
-output_folder = "b{}_e{}_se_{}_vs_{}".format(str(batch_size),str(epochs),
-                                       str(steps_per_epoch),str(validation_steps))
-"""
 outputDirPath = os.getcwd()+'/'+study_name+'/'+outputFile
 
 if not os.path.exists(outputDirPath):
@@ -311,40 +258,18 @@ callbackList = [ weight_saver , tensorboard_object]
 # model = custom_models.get_small_3d_unet( input_shape )
 model = custom_models.get_test_3d_small_cnn( input_shape )
 model.summary()
-# NOTE: THIS IS JUST SAYING, GIVE AN INPUT SHAPE, AND SPECIFIC NETWORK ARCHITECTURE, 
-#       DEFINE THE INITIAL BIASES AND WEIGHTS.
-
-
-
-
-
-
-
-
-# MAtt mentioned this for prediction instead of getsimple3dunet
-# model = tensorflow.keras.models.load_model(modelFilePath, custom_objets={"dice_coef": dice_coef})
 
 model.compile( optimizer=Adam(2e-5), loss=tensorflow.keras.losses.binary_crossentropy, 
     metrics=[dice_coef,dice_coef_loss] )
 
-
-
 #  DEFINES WHICH METRICS WILL BE USED TO ANALYZE THE MODELS EFFICACY
 
 #TODO: turned off multiprocessing
+#TODO: test w/out validation
+"""
 hist=model.fit(train_generator, validation_data=valid_generator, validation_steps= validation_steps,
                steps_per_epoch= steps_per_epoch, epochs= epochs, verbose=1 ,  callbacks=callbackList,
                use_multiprocessing = 0, max_queue_size = 2)
-
-
-# generator = train_generator, defines the main data generator
-# validation_data=valid_generator, defines the main validation generator
-# Validation_steps
-# steps_per_epoch = steps_per_epoch , total number of steps (batches of samples) to yield from generator before proceeding to next epoch
-#           should be ceil( total_num_samples / batch_size )
-#           thus it will cycle through entire data set one per epoch
-# 
-#  epochs is total number of epochs to train
-# verbose = 1, 0 is silent, 1 prints progress bar, 2 prints one line per epoch
-# max_queue_size = 10, this is the number of queues that the CPU will create of images while GPU is running
-# callbacks = callbackList
+"""
+hist=model.fit(train_generator, steps_per_epoch= steps_per_epoch, epochs= epochs, verbose=1 ,  callbacks=callbackList,
+               use_multiprocessing = 0, max_queue_size = 2)

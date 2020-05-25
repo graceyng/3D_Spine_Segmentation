@@ -94,6 +94,8 @@ class Generator_3D(Sequence):
 		return int(np.floor(len(self.scanList) / self.batchSize))
 
 	def __getitem__(self, index):
+		print("Calling generator")
+
 		scan_indices_to_grab = self.indexes[index*self.batchSize : (index+1)*self.batchSize]
 		batchScanList = np.array(self.scanList)[scan_indices_to_grab]
 
