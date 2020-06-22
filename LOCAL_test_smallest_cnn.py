@@ -182,14 +182,18 @@ class WeightsRecorder(tensorflow.keras.callbacks.Callback):
             writer.writerow({"epoch": epoch,"time(s)": ellapsed, "training_loss": training_loss,"validation_loss": validation_loss, "training_dice": training_dice, "validation_dice": validation_dice})
 
 
-
+#Tensorflow 1.0
 # config = tensorflow.ConfigProto(intra_op_parallelism_threads=16, inter_op_parallelism_threads=16)
+config = tensorflow.ConfigProto(intra_op_parallelism_threads=0, inter_op_parallelism_threads=0)
+tensorflow.keras.backend.set_session(tensorflow.Session(config=config))
+
+"""
+#Tensorflow 2.0
 config = tensorflow.compat.v1.ConfigProto(intra_op_parallelism_threads=0, inter_op_parallelism_threads=0)
 #tensorflow.config.threading.set_inter_op_parallelism_threads(0)
 #tensorflow.config.threading.set_intra_op_parallelism_threads(0)
-
 tensorflow.compat.v1.keras.backend.set_session(tensorflow.compat.v1.Session(config=config))
-
+"""
 
 #############################################
 #############################################

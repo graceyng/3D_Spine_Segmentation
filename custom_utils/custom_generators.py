@@ -1,7 +1,14 @@
-#TODO: check if keras version matters
 import tensorflow as tf
+
+# Tensorflow 1.0
+from keras.utils import Sequence
+
+"""
+# Tensorflow 2.0
 keras = tf.compat.v1.keras
 Sequence = keras.utils.Sequence
+"""
+
 import numpy as np 
 import glob
 import os
