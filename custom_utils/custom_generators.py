@@ -267,7 +267,8 @@ class Generator_3D(Sequence):
 			Img_slice += abs(Img_slice.min())
 		else:
 			Img_stack -= Img_stack.min()
-		Img_stack = Img_stack / Img_stack.max()
+		if Img_stack.max() != 0.:
+			Img_stack = Img_stack / Img_stack.max()
 
 		return  Img_stack , Mask_stack
 

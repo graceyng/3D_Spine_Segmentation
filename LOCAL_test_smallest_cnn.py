@@ -28,8 +28,8 @@ import time
 
 
 # Set CPU as available physical device
-my_devices = tensorflow.config.experimental.list_physical_devices(device_type='CPU')
-tensorflow.config.experimental.set_visible_devices(devices= my_devices, device_type='CPU')
+#my_devices = tensorflow.config.experimental.list_physical_devices(device_type='CPU')
+#tensorflow.config.experimental.set_visible_devices(devices= my_devices, device_type='CPU')
 
 study_name = '3D_MRI_Spine_Segmentation'
 
