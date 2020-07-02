@@ -141,8 +141,6 @@ valid_generator = combine_generator( valid_generator ,total_valid_images, metada
 smooth = 1
 
 def dice_coef(y_true, y_pred):
-    #print(y_true.shape)
-    #print(y_pred.shape)
     y_true_f = K.flatten(y_true)
     y_pred_f = K.flatten(y_pred)
     intersection = K.sum(y_true_f * y_pred_f)

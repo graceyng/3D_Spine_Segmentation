@@ -2,9 +2,7 @@
 
 import tensorflow
 from custom_utils import custom_models
-from custom_utils.old_custom_generators import getFolderNamesFromDir, getFileNamesFromDir, getFileFrameNumber, getFileMappingForDir
-from custom_utils.old_custom_generators import Generator_3D
-from custom_utils.custom_generator_3D_PADTO64 import Generator_3D_PADTO64
+from custom_utils.custom_generators import Generator_3D
 import string
 import os
 import numpy as np
@@ -18,17 +16,20 @@ from keras.models import Sequential
 from keras.layers import Dense, Dropout, Activation, Flatten
 from keras.layers import Conv3D, MaxPooling3D, BatchNormalization
 import csv
+import json
 import time
 import random
 import math
 # import PIL
 from tensorflow.keras.optimizers import SGD, RMSprop, Adam
-import time
+
+#Not necessary?
+"""
 try:
      from PIL import Image
 except ImportError:
      import Image
-
+"""
 
 
 
@@ -38,16 +39,7 @@ except ImportError:
 ###############################################################################
 ###############################################################################
 
-study_name = '3D_SPGR_Segmentation'
-
-dirPath_train = "/home/lspfi_lab_upenn/DeepLearning/3D_data/3D_data/train/"
-dirPath_valid = "/home/lspfi_lab_upenn/DeepLearning/3D_data/3D_data/valid/"
-
-
-dirPath_train_mask = (dirPath_train + "mask/")
-dirPath_train_image = (dirPath_train + "image/")
-dirPath_valid_mask = (dirPath_valid + "mask/")
-dirPath_valid_image = (dirPath_valid + "image/")
+metadataFile = '/Users/graceng/Documents/Med_School/Research/Radiology/043020_Metadata.json'
 
 
 ###############################################################################
@@ -56,33 +48,41 @@ dirPath_valid_image = (dirPath_valid + "image/")
 ###############################################################################
 ###############################################################################
 
-batch_size = 1 # 32
-epochs = 10 #10 
+study_name = '3D_MRI_Spine_Segmentation'
+output_name = 'test'
 
-total_images = 95
-total_train_images = 67
-total_valid_images = total_images - total_train_images
-
-steps_per_epoch = np.ceil( total_train_images / batch_size )
-validation_steps = np.ceil( total_valid_images / batch_size )
-
-initial_epoch = 0 # SHOULD THIE BE 1?
-
-seed = 1
-numFramesPerStack = 60
-# NUM FRAMES PER STACK IS THE TOTAL NUMBER OF SLICES 
-
-img_input_size = 128
-input_shape = ( 1, img_input_size , img_input_size , 64 ) # (1, 200, 200, 352)
+maskDir = 'collateVertMasks'
+nChannels = 1
+epochs = 1 #10
+outputFile = 'trial1'
 
 # OTHER HYPERPARAMETERS
 # SPATIALDROPOUT3D RATE: 0.1
 # LOSS FUNCTION: BINARY CROSS ENTROPY
-# IMG INPUT SIZE: 64 OR 48 SLICES?
-# activation of final layer can be softmax or sigmoid 
+# activation of final layer can be softmax or sigmoid
 
+############################################################################
+#Expected dictionary keys in metadata file
+metadataVars = ['scanList_train', 'scanList_valid', 'dim', 'numFramesPerStack', 'dirPath', 'sliceFileExt', 'batch_size',
+               'k_folds', 'k_idx', 'seed']
+f = open(metadataFile, 'r')
+metadata = json.load(f)
+f.close()
 
+for metadataVar in metadataVars:
+    if metadataVar not in metadata:
+        raise Exception('{} not in metadata file.'.format(metadataVar))
+dim = tuple(metadata['dim'])
 
+#TODO: switch back to full size
+total_train_images = 10 #len(metadata['scanList_train'])
+total_valid_images = len(metadata['scanList_valid'])
+
+#Channels_first
+#input_shape = (nChannels, dim[0], dim[1], metadata['numFramesPerStack'])
+
+#Channels_last
+input_shape = (dim[0], dim[1], metadata['numFramesPerStack'], nChannels)
 
 
 
@@ -93,15 +93,6 @@ input_shape = ( 1, img_input_size , img_input_size , 64 ) # (1, 200, 200, 352)
 #       THE CODE AUTOMATICALLY INTERPOLATES TO THAT NUMBER. 
 #           HOWEVER, THE NUM_FRAMES_PER_STACK MUST NOT BE CHANGED
 
-img_height = input_shape[ 1 ]
-img_width = input_shape[ 2 ]
-nChannels = input_shape[ 0 ]
-
-
-num_classes = 1 # NOTE: FOR SEGMENTATION, SEEMS UNNECESSARY. USED ONLY FOR CLASSIFIER
-
-
-# batch size*iterations = number of images
 
 ###############################################################################
 ###############################################################################
@@ -109,8 +100,6 @@ num_classes = 1 # NOTE: FOR SEGMENTATION, SEEMS UNNECESSARY. USED ONLY FOR CLASS
 ###############################################################################
 ###############################################################################
 
-
-pad_to_64 = True
 zoomRange=(0.9,1.1) # around 1
 rotationRange=10 # in degrees
 horz_shift = 0.1 # % of the total number of pixels
@@ -118,7 +107,7 @@ vert_shift = 0.1
 flipLR = False
 flipUD = False
 bool_shuffle = True
-
+fitImgMethod = 'pad' #'interpolate'
 
 
 ###############################################################################
@@ -127,19 +116,15 @@ bool_shuffle = True
 ###############################################################################
 ###############################################################################
 
+#TODO: only using first 10 scans
+train_generator = Generator_3D(metadata['scanList_train'][:10], metadata['dirPath'], maskDir,
+                               numFramesPerStack=metadata['numFramesPerStack'], batchSize=metadata['batch_size'],
+                               dim=dim, nChannels=nChannels, seed=metadata['seed'], shuffle=bool_shuffle,
+                               sliceFileExt=metadata['sliceFileExt'], fitImgMethod=fitImgMethod, zoomRange=zoomRange,
+                               rotationRange=rotationRange, widthShiftRange=vert_shift, heightShiftRange=horz_shift,
+                               flipLR=flipLR, flipUD=flipUD, channel_order='last')
 
-fileIDList_train_image, fileIDToPath_train_image, fileIDToLabel_train_image = getFileMappingForDir(dirPath_train_image, numFramesPerStack)
-fileIDList_length_train_image = len(fileIDList_train_image)
-
-
-train_image_generator = Generator_3D_PADTO64( fileIDList_train_image, fileIDToPath_train_image, 
-    numFramesPerStack=numFramesPerStack, 
-    batchSize = batch_size, 
-    dim = ( img_height , img_width ) , nChannels = nChannels ,
-    seed = seed , shuffle=bool_shuffle, sepToken="_", zoomRange=zoomRange, rotationRange=rotationRange, 
-    widthShiftRange=vert_shift, heightShiftRange=horz_shift, 
-    flipLR = flipLR, flipUD = flipUD )
-
+steps_per_epoch = train_generator.__len__()
 
 
 ###############################################################################
@@ -148,19 +133,15 @@ train_image_generator = Generator_3D_PADTO64( fileIDList_train_image, fileIDToPa
 ###############################################################################
 ###############################################################################
 
+valid_generator = Generator_3D(metadata['scanList_valid'], metadata['dirPath'], maskDir,
+                               numFramesPerStack=metadata['numFramesPerStack'], batchSize=metadata['batch_size'],
+                               dim=dim, nChannels=nChannels, seed=metadata['seed'], shuffle=bool_shuffle,
+                               sliceFileExt=metadata['sliceFileExt'], fitImgMethod=fitImgMethod, zoomRange=zoomRange,
+                               rotationRange=rotationRange, widthShiftRange=vert_shift, heightShiftRange=horz_shift,
+                               flipLR=flipLR, flipUD=flipUD,
+                               channel_order='last')
 
-
-fileIDList_valid_image, fileIDToPath_valid_image, fileIDToLabel_valid_image = getFileMappingForDir(dirPath_valid_image, numFramesPerStack)
-fileIDList_length_valid_image = len(fileIDList_valid_image)
-
-
-valid_image_generator = Generator_3D_PADTO64( fileIDList_valid_image , fileIDToPath_valid_image , 
-    numFramesPerStack=numFramesPerStack, 
-    batchSize = batch_size, 
-    dim = ( img_height , img_width ) , nChannels = nChannels ,
-    seed = seed , shuffle=bool_shuffle, sepToken="_", zoomRange=zoomRange, rotationRange=rotationRange, 
-    widthShiftRange=vert_shift, heightShiftRange=horz_shift, 
-    flipLR = flipLR, flipUD = flipUD )
+validation_steps = valid_generator.__len__()
 
 
 ###############################################################################
@@ -169,39 +150,29 @@ valid_image_generator = Generator_3D_PADTO64( fileIDList_valid_image , fileIDToP
 ###############################################################################
 ###############################################################################
 
-
-
-
-
-def combine_generator( gen, total_num_images, batch_size ):
-
+def combine_generator(gen, total_num_images, batch_size):
     counter = 0
 
-    num_iterations = np.ceil( total_num_images / batch_size ).astype( int )
+    num_iterations = np.floor(total_num_images / batch_size).astype(int)
 
     while True:
-        for counter in range( num_iterations ):
-
+        for counter in range(num_iterations):
 
             # index=random.randint(0,total_num_images-batch_size-1)
             index = counter * batch_size
             if index > total_num_images - batch_size - 1:
                 index = total_num_images - batch_size - 1
 
-            # print()  
+            # print()
             # print('Index number {}'.format(str(index)))
-            
-            img , mask = gen.__getitem__(index)
-            yield ( img , mask )
+
+            img, mask = gen.__getitem__(index)
+            yield (img, mask)
 
 
-train_generator = combine_generator( train_image_generator, total_train_images,
-    batch_size )
+train_generator = combine_generator(train_generator, total_train_images, metadata['batch_size'])
 
-valid_generator = combine_generator( valid_image_generator ,total_valid_images,
-    batch_size )
-
-
+valid_generator = combine_generator(valid_generator, total_valid_images, metadata['batch_size'])
 
 
 ###############################################################################
@@ -230,12 +201,6 @@ def dice_coef_loss(y_true, y_pred):
 ###############################################################################
 ###############################################################################
 
-
-
-
-
-
-# class WeightsRecorder(tensorflow.keras.callbacks.Callback):
 class WeightsRecorder(tensorflow.keras.callbacks.Callback):
     def __init__(self, progressFilePath):
         super(WeightsRecorder, self).__init__()
@@ -261,10 +226,18 @@ class WeightsRecorder(tensorflow.keras.callbacks.Callback):
                     "training_dice": training_dice, "validation_dice": validation_dice})
 
 
-
+#Tensorflow 1.0
+# config = tensorflow.ConfigProto(intra_op_parallelism_threads=16, inter_op_parallelism_threads=16)
 config = tensorflow.ConfigProto(intra_op_parallelism_threads=0, inter_op_parallelism_threads=0)
-
 tensorflow.keras.backend.set_session(tensorflow.Session(config=config))
+
+"""
+#Tensorflow 2.0
+config = tensorflow.compat.v1.ConfigProto(intra_op_parallelism_threads=0, inter_op_parallelism_threads=0)
+#tensorflow.config.threading.set_inter_op_parallelism_threads(0)
+#tensorflow.config.threading.set_intra_op_parallelism_threads(0)
+tensorflow.compat.v1.keras.backend.set_session(tensorflow.compat.v1.Session(config=config))
+"""
 
 
 #############################################
@@ -288,7 +261,7 @@ tensorflow.keras.backend.set_session(tensorflow.Session(config=config))
 # Define folder name with model parameters
 # will have type /3D_SPGR_Segmentation/out_b30_e300_se60_vs_100
 
-output_folder = "b{}_e{}_se_{}_vs_{}".format(str(batch_size),str(epochs),
+output_folder = output_name + "b{}_e{}_se_{}_vs_{}".format(str(metadata['batch_size']),str(epochs),
                                        str(steps_per_epoch),str(validation_steps))
 
 outputDirPath = os.getcwd()+'/'+study_name+'/'+output_folder
@@ -296,14 +269,14 @@ outputDirPath = os.getcwd()+'/'+study_name+'/'+output_folder
 if not os.path.exists(outputDirPath):
     os.makedirs(outputDirPath)
 else:
-    print('directory exists!!!!')
+    print('directory exists!')
 
 tensorboardDirPath = os.getcwd()+'/'+study_name+'/TENSORBOARD/'+output_folder
 
 if not os.path.exists(tensorboardDirPath):
     os.makedirs(tensorboardDirPath)
 else:
-    print('directory exists!!!!')
+    print('directory exists!')
 
 
 tensorboard_object = TensorBoard( log_dir=tensorboardDirPath ) 
@@ -321,7 +294,8 @@ if not os.path.isfile(progressFilePath):
 
 recorder = WeightsRecorder(progressFilePath)
 
-weight_saver = ModelCheckpoint(os.path.join(outputDirPath, study_name+'.{epoch:02d}-{val_loss:.2f}-{val_dice_coef:.2f}.h5'),save_best_only=False, save_weights_only=False, period=10)
+weight_saver = ModelCheckpoint(os.path.join(outputDirPath, study_name+'.{epoch:02d}-{val_loss:.2f}-{val_dice_coef:.2f}.h5'),
+                               save_best_only=False, save_weights_only=False, period=10)
 
 callbackList = [ recorder, weight_saver , tensorboard_object]
 
@@ -340,12 +314,13 @@ callbackList = [ recorder, weight_saver , tensorboard_object]
 #############################################
 #############################################
 
-
+# model = custom_models.get_3d_unet_9layers( input_shape )
 # model = custom_models.get_simple_3d_unet( input_shape )
-model = custom_models.get_3d_unet_9layers( input_shape )
-
-
+# model = custom_models.get_shallow_3d_unet( input_shape )
+# model = custom_models.get_small_3d_unet( input_shape )
+model = custom_models.get_test_3d_small_cnn( input_shape )
 model.summary()
+
 
 
 #############################################
@@ -374,19 +349,18 @@ model.compile( optimizer=Adam(2e-5), loss=tensorflow.keras.losses.sparse_categor
 
 #  DEFINES WHICH METRICS WILL BE USED TO ANALYZE THE MODELS EFFICACY
 
-hist=model.fit_generator(generator = train_generator, validation_data=valid_generator, validation_steps= validation_steps, steps_per_epoch= steps_per_epoch, 
-            epochs= epochs, verbose=1 ,  callbacks=callbackList , use_multiprocessing = 1,
-            max_queue_size = 1)  
+#TODO: turned off multiprocessing
+#TODO: test w/out validation
+#TODO: fit_generator vs. fit depending on Keras version
+"""
+hist=model.fit_generator(train_generator, validation_data=valid_generator, validation_steps=validation_steps,
+               steps_per_epoch=steps_per_epoch, epochs=epochs, verbose=1, callbacks=callbackList,
+               use_multiprocessing=1, max_queue_size=1)
+"""
+hist=model.fit_generator(train_generator, steps_per_epoch=steps_per_epoch, epochs=epochs, verbose=1,
+                         callbacks=callbackList, use_multiprocessing=1, max_queue_size=1)
 
 
-# generator = train_generator, defines the main data generator
-# validation_data=valid_generator, defines the main validation generator
-# Validation_steps
-# steps_per_epoch = steps_per_epoch , total number of steps (batches of samples) to yield from generator before proceeding to next epoch
-#           should be ceil( total_num_samples / batch_size )
-#           thus it will cycle through entire data set one per epoch
-# 
-#  epochs is total number of epochs to train
 # verbose = 1, 0 is silent, 1 prints progress bar, 2 prints one line per epoch
 # max_queue_size = 10, this is the number of queues that the CPU will create of images while GPU is running
 # callbacks = callbackList
