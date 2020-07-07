@@ -1,6 +1,6 @@
 #! /bin/bash
 
-CUDA_VISIBLE_DEVICES='get_CUDA_VISIBLE_DEVICES' || exit
+CUDA_VISIBLE_DEVICES=`get_CUDA_VISIBLE_DEVICES` || exit
 export CUDA_VISIBLE_DEVICES
 cd /cbica/projects/deepspine/code/3D_Spine_Segmentation/
 

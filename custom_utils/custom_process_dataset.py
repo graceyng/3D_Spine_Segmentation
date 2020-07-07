@@ -10,13 +10,27 @@ import cv2
 import json
 
 
-dirPath = '/Users/graceng/Documents/Med_School/Research/Radiology/all_mri_cleaned_bbs/'
-scanRegExFilter = r'_L$' #None
+# Note: for the paths, be sure to have a '/' at the end
+dirPath = '/Volumes/Storage/Radiology_Data/mri_all_files/'
+# dirPath = '/Users/graceng/Documents/Med_School/Research/Radiology/all_mri_cleaned_bbs/'
+
+# duplicatesPath: a directory that contains scans that were previously processed. If a scan name is found in both the
+# dirPath and the duplicatesPath (meaning that the scan has already been processed), either skip the processing of this
+# scan in dirPath, or remove the scan directory within dirPath
+duplicatesPath = '/Users/graceng/Documents/Med_School/Research/Radiology/all_mri_cleaned_bbs/' #None
+duplicatesOutputFile = '/Users/graceng/Documents/Med_School/Research/Radiology/043020_Metadata.json' #None
+handleDuplicates = 'remove' #'skip'
+scanRegExFilter = None #r'_L$'
 sliceFileExt = '.dcm'
 segFile = 'seg.nii.gz'
 segLabelKey = {'disc': 1.}
 collateSegType = 'vert' #'disc'
 createMaskDir = None #'collateVertMasks' #'collateDiscMasks' #None
+
+# outputHandleDuplicates: if 'combine', then both scans from dirPath and duplicatesPath are included in the outputFile
+# (without duplication). If 'currDirOnly', then only scans from dirPath (regardless of whether they also occur in duplicatesPath)
+# are included in the outputFile.
+outputHandleDuplicates = 'combine' #'currDirOnly'
 outputFile = None #'/Users/graceng/Documents/Med_School/Research/Radiology/043020_Metadata.json'
 
 
@@ -54,17 +68,34 @@ def getFileNamesFromDir(dirPath, namesOnly=True, fileExt=None):
 
 #Feed a list of filepaths to the scan directories into the generator. Need to split dataset randomly into training vs. validation sets
 scanNames = getFolderNamesFromDir(dirPath, regExFilter=scanRegExFilter)
-total_images = len(scanNames)
-total_valid_images = int(np.floor(total_images / k_folds))
-total_train_images = total_images - total_valid_images
-
-
 max_frames = 0
 max_height = 0
 max_width = 0
-min_height = 1000
-min_width = 1000
+
+if duplicatesPath is not None:
+    duplicateNames = getFolderNamesFromDir(duplicatesPath)
+    if outputHandleDuplicates == 'combine':
+        if duplicatesOutputFile is None:
+            raise Exception('In order to create a combined output file, duplicatesOutputFile cannot be none.')
+        else:
+            metadataVars = ['scanList_train', 'scanList_valid', 'dim', 'numFramesPerStack', 'dirPath', 'sliceFileExt',
+                            'batch_size', 'k_folds', 'k_idx', 'seed']
+            f = open(duplicatesOutputFile, 'r')
+            duplicatesMetadata = json.load(f)
+            f.close()
+            max_frames = duplicatesMetadata['numFramesPerStack']
+            max_height = duplicatesMetadata['dim'][0]
+            max_width = duplicatesMetadata['dim'][1]
+
 for scanName in scanNames:
+    if duplicatesPath is not None:
+        if scanName in duplicateNames:
+            if handleDuplicates == 'skip':
+                break
+            elif handleDuplicates == 'remove':
+                shutil.rmtree(dirPath+scanName)
+            else:
+                raise Exception('handleDuplicates must be either "skip" or "remove".')
     sliceNames = getFileNamesFromDir(dirPath+scanName, fileExt=sliceFileExt)
     num_frames = len(sliceNames)
     if num_frames > max_frames:
@@ -76,12 +107,8 @@ for scanName in scanNames:
         (height, width) = Img_slice.shape
         if height > max_height:
             max_height = height
-        if height < min_height:
-            min_height = height
         if width > max_width:
             max_width = width
-        if width < min_width:
-            min_width = width
     if createMaskDir is not None:
         maskDirPath = dirPath+scanName+'/'+createMaskDir
         if os.path.exists(maskDirPath):
@@ -112,8 +139,30 @@ numFramesPerStack = max_frames
 random.seed(seed)
 random.shuffle(scanNames)
 
-scanList_train = scanNames[:total_train_images-1]
-scanList_valid = scanNames[total_train_images:]
+if duplicatesPath is not None:
+    if outputHandleDuplicates == 'combine':
+        if numFramesPerStack != duplicatesMetadata['numFramesPerStack']:
+            print('FYI: numFramesPerStack from the set of scans contained in dirPath exceeds that of the set of scans in '
+                  'duplicatesPath.')
+        if max_height != duplicatesMetadata['dim'][0]:
+            print('FYI: max_height (metadata["dim"][0]) from the set of scans contained in dirPath exceeds that of the '
+                  'set of scans in duplicatesPath.')
+        if max_width != duplicatesMetadata['dim'][1]:
+            print('FYI: max_width (metadata["dim"][1]) from the set of scans contained in dirPath exceeds that of the '
+                  'set of scans in duplicatesPath.')
+        outputScanNames = list(set(scanNames) | set(duplicateNames))
+    elif outputHandleDuplicates == 'currDirOnly':
+        outputScanNames = scanNames
+    else:
+        raise Exception('outputHandleDuplicates must be either "combine" or "currDirOnly."')
+else:
+    outputScanNames = scanNames
+
+total_images = len(outputScanNames)
+total_valid_images = int(np.floor(total_images / k_folds))
+total_train_images = total_images - total_valid_images
+scanList_train = outputScanNames[:total_train_images-1]
+scanList_valid = outputScanNames[total_train_images:]
 
 output_dict = {'scanList_train': scanList_train, 'scanList_valid': scanList_valid, 'dim': (max_height, max_width),
                'numFramesPerStack': numFramesPerStack, 'dirPath': dirPath, 'sliceFileExt': sliceFileExt,

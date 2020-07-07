@@ -39,7 +39,7 @@ except ImportError:
 ###############################################################################
 ###############################################################################
 
-metadataFile = '/Users/graceng/Documents/Med_School/Research/Radiology/043020_Metadata.json'
+metadataFile = '/cbica/projects/deepspine/data/043020_Metadata.json'
 
 
 ###############################################################################
